@@ -1,0 +1,32 @@
+[package]
+name = "bitsearch"
+version = "0.1.0"
+edition = "2021"
+description = "Bitcoin P2PKH private key search over a hex range (Rust + CUDA)"
+license = "MIT"
+
+[features]
+default = []
+# Enable CUDA (requires Linux + CUDA driver + libnvrtc at runtime, and nvcc at
+# build time for `cuda-version-from-build-system`). Build on Colab/CI.
+cuda = ["dep:cudarc", "cudarc/cuda-version-from-build-system"]
+
+[dependencies]
+k256 = "0.13"
+sha2 = "0.10"
+ripemd = "0.1"
+clap = { version = "4", features = ["derive"] }
+anyhow = "1"
+rayon = "1"
+hex = "0.4"
+cudarc = { version = "0.14", optional = true, default-features = false, features = ["std", "driver", "nvrtc"] }
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "abort"
+
+[[bin]]
+name = "bitsearch"
+path = "src/main.rs"
