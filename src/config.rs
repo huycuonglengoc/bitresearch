@@ -14,15 +14,15 @@ use clap::Parser;
 pub struct Args {
     /// Start of the private-key range (hex, up to 64-bit, optional 0x prefix).
     #[arg(long)]
-    pub start: String,
+    pub start: Option<String>,
 
     /// End of the range (hex, inclusive).
     #[arg(long)]
-    pub end: String,
+    pub end: Option<String>,
 
     /// Target P2PKH address (starts with '1').
     #[arg(long)]
-    pub target: String,
+    pub target: Option<String>,
 
     /// Number of CPU threads to use (0 = all logical cores).
     #[arg(long, default_value_t = 0)]
@@ -54,8 +54,11 @@ pub struct Config {
 
 impl Config {
     pub fn from_args(a: Args) -> Result<Self> {
-        let start = parse_hex_u64(&a.start)?;
-        let end = parse_hex_u64(&a.end)?;
+        let start_str = a.start.ok_or_else(|| anyhow::anyhow!("--start is required"))?;
+        let end_str = a.end.ok_or_else(|| anyhow::anyhow!("--end is required"))?;
+        let target = a.target.ok_or_else(|| anyhow::anyhow!("--target is required"))?;
+        let start = parse_hex_u64(&start_str)?;
+        let end = parse_hex_u64(&end_str)?;
         if start == 0 {
             anyhow::bail!("start must be >= 1 (private key 0 is the point at infinity, not a valid key)");
         }
@@ -65,7 +68,7 @@ impl Config {
         Ok(Config {
             start,
             end,
-            target: a.target,
+            target,
             threads: a.threads,
             cpu: a.cpu,
             checkpoint: a.checkpoint,

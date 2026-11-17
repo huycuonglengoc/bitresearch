@@ -9,7 +9,19 @@ use bitsearch::config::{self, Config};
 use bitsearch::{checkpoint, cpu, target};
 
 fn main() -> Result<()> {
-    let cfg = Config::from_args(config::Args::parse())?;
+    let args = config::Args::parse();
+
+    // GPU self-test (no range/target needed).
+    #[cfg(feature = "cuda")]
+    if args.selftest {
+        return bitsearch::gpu::selftest();
+    }
+    #[cfg(not(feature = "cuda"))]
+    if args.selftest {
+        anyhow::bail!("self-test requires building with `--features cuda`");
+    }
+
+    let cfg = Config::from_args(args)?;
 
     let target_hash = target::address_to_hash160(&cfg.target)?;
     eprintln!("target HASH160 = {}", hex::encode(target_hash));
@@ -24,16 +36,6 @@ fn main() -> Result<()> {
     }
     if start > cfg.end {
         anyhow::bail!("range already exhausted (checkpoint past end)");
-    }
-
-    // GPU self-test.
-    #[cfg(feature = "cuda")]
-    if cfg.selftest {
-        return bitsearch::gpu::selftest();
-    }
-    #[cfg(not(feature = "cuda"))]
-    if cfg.selftest {
-        anyhow::bail!("self-test requires building with `--features cuda`");
     }
 
     let threads = cfg.thread_count();
