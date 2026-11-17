@@ -14,6 +14,7 @@
 
 typedef unsigned int u32;
 typedef unsigned long long u64;
+typedef unsigned char u8;
 
 // ---------------------------------------------------------------------------
 // Field element (8 x u32, little-endian)

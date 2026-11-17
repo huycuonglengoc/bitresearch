@@ -56,6 +56,9 @@ impl Config {
     pub fn from_args(a: Args) -> Result<Self> {
         let start = parse_hex_u64(&a.start)?;
         let end = parse_hex_u64(&a.end)?;
+        if start == 0 {
+            anyhow::bail!("start must be >= 1 (private key 0 is the point at infinity, not a valid key)");
+        }
         if start > end {
             anyhow::bail!("invalid range: start (0x{start:x}) > end (0x{end:x})");
         }

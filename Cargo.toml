@@ -7,9 +7,12 @@ license = "MIT"
 
 [features]
 default = []
-# Enable CUDA (requires Linux + CUDA driver + libnvrtc at runtime, and nvcc at
-# build time for `cuda-version-from-build-system`). Build on Colab/CI.
-cuda = ["dep:cudarc", "cudarc/cuda-version-from-build-system"]
+# Enable CUDA (requires Linux + CUDA driver + libnvrtc at runtime).
+# Pinned to cuda-12080 bindings (the newest cudarc 0.14 supports) instead of
+# `cuda-version-from-build-system`, which panics on CUDA 13 (Colab's current
+# toolkit). The driver/nvrtc APIs are version-stable, so 12.8 bindings dlopen
+# fine against a newer CUDA runtime.
+cuda = ["dep:cudarc", "cudarc/cuda-12080"]
 
 [dependencies]
 k256 = "0.13"

@@ -59,14 +59,16 @@ compressed-key encoding, SHA-256 and RIPEMD-160 end-to-end.
 ## One command on Google Colab
 
 ```python
-!bash <(curl -sSL https://raw.githubusercontent.com/<user>/bitsearch/main/scripts/run_colab.sh) \
+import os
+os.environ["BITSEARCH_REPO"] = "https://github.com/<user>/bitresearch.git"
+
+!bash <(curl -sSL https://raw.githubusercontent.com/<user>/bitresearch/main/scripts/run_colab.sh) \
      -- 0xSTART_HEX 0xEND_HEX 1TARGET_P2PKH...
 ```
 
-The script installs the Rust toolchain if needed, clones the repo, builds with CUDA
-(Colab has `nvcc` + the CUDA runtime), and runs. Set the `BITSEARCH_REPO` env var to point
-at your fork. The checkpoint is written to `/content/bitsearch_checkpoint.json` so a
-runtime reset resumes instead of restarting.
+The script installs the Rust toolchain if needed, clones `BITSEARCH_REPO`, builds with
+CUDA (Colab has `nvcc` + the CUDA runtime), and runs. The checkpoint is written to
+`/content/bitsearch_checkpoint.json` so a runtime reset resumes instead of restarting.
 
 ---
 

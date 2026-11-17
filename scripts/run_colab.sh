@@ -4,14 +4,28 @@
 # with CUDA, and runs.
 #
 # Usage (from a Colab cell):
-#   !bash <(curl -sSL https://raw.githubusercontent.com/<user>/bitsearch/main/scripts/run_colab.sh) \
+#   !bash <(curl -sSL https://raw.githubusercontent.com/<user>/<repo>/main/scripts/run_colab.sh) \
 #        -- 0xSTART_HEX 0xEND_HEX 1TARGET_P2PKH...
 #
-# Set BITSEARCH_REPO to override the repository URL.
+# The repository URL is read from BITSEARCH_REPO. Set it in the cell before
+# running, or edit REPO_URL below and push:
+#   import os
+#   os.environ["BITSEARCH_REPO"] = "https://github.com/<user>/<repo>.git"
 set -euo pipefail
 
-REPO_URL="${BITSEARCH_REPO:-https://github.com/yourname/bitsearch.git}"
+REPO_URL="${BITSEARCH_REPO:-}"
 REPO_DIR="bitsearch"
+
+if [ -z "$REPO_URL" ]; then
+  echo "ERROR: BITSEARCH_REPO is not set." >&2
+  echo "Set it to your repository URL before running, e.g.:" >&2
+  echo "  import os; os.environ['BITSEARCH_REPO'] = 'https://github.com/<user>/bitresearch.git'" >&2
+  echo "or edit REPO_URL in scripts/run_colab.sh and push." >&2
+  exit 1
+fi
+
+# Fail fast on a missing/private repo instead of prompting for credentials.
+export GIT_TERMINAL_PROMPT=0
 
 # --- 1. GPU check -----------------------------------------------------------
 if command -v nvidia-smi >/dev/null 2>&1 && nvidia-smi >/dev/null 2>&1; then
@@ -36,6 +50,11 @@ fi
 if [ ! -d "$REPO_DIR" ]; then
   echo "== Cloning $REPO_URL =="
   git clone --depth 1 "$REPO_URL" "$REPO_DIR"
+fi
+if [ ! -f "$REPO_DIR/Cargo.toml" ]; then
+  echo "ERROR: clone failed or $REPO_DIR has no Cargo.toml." >&2
+  echo "Check that BITSEARCH_REPO points at a public repo containing this project." >&2
+  exit 1
 fi
 cd "$REPO_DIR"
 
