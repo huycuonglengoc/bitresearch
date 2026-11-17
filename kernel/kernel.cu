@@ -204,14 +204,22 @@ __device__ __forceinline__ void fe_sqr(fe *r, const fe *a) {
 }
 
 // r = a^(p-2) mod p (Fermat inverse). exp = p - 2.
-__device__ __forceinline__ void fe_inv(fe *r, const fe *a) {
-    // p - 2 = 0xFFFFFFFF FFFFFFFF FFFFFFFF FFFFFFFF FFFFFFFF FFFFFFFF FFFFFFFE FFFFFC2D
+//
+// IMPORTANT: `__noinline__` + `#pragma unroll 1` are deliberate. The loop has a
+// constant bound and a compile-time-constant exponent, so without these hints
+// nvcc/ptxas fully unrolls 256 iterations of fe_sqr/fe_mul into the
+// (forceinlined) caller — a code explosion that makes the compiler hang for
+// minutes. Compiled once as a normal function, compile time is instant; the
+// runtime cost (256 sqr + ~128 mul per inverse) is amortized by batch inversion
+// (a single inverse per block).
+__device__ __noinline__ void fe_inv(fe *r, const fe *a) {
     const u32 exp[8] = {
         0xFFFFFC2Du, 0xFFFFFFFEu, 0xFFFFFFFFu, 0xFFFFFFFFu,
         0xFFFFFFFFu, 0xFFFFFFFFu, 0xFFFFFFFFu, 0xFFFFFFFFu
     };
     fe result;
     fe_from_u32(&result, 1);
+    #pragma unroll 1
     for (int bit = 255; bit >= 0; bit--) {
         fe_sqr(&result, &result);
         if ((exp[bit >> 5] >> (bit & 31)) & 1) {
@@ -282,6 +290,7 @@ __device__ __forceinline__ void point_add_mixed(jacobian *r, const jacobian *p, 
 // key * G in Jacobian coordinates, using the 2^i * G table.
 __device__ __forceinline__ void point_from_u64(jacobian *out, const u32 *g_tab, u64 key) {
     fe_zero(&out->z);
+    #pragma unroll 1  // 64 iterations of point_add_mixed; unrolling inflates codegen
     for (int i = 0; i < 64; i++) {
         if ((key >> i) & 1ULL) {
             affine q;
