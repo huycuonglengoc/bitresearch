@@ -4,14 +4,18 @@ version = "0.1.0"
 edition = "2021"
 description = "Bitcoin P2PKH private key search over a hex range (Rust + CUDA)"
 license = "MIT"
+build = "build.rs"
 
 [features]
 default = []
-# Enable CUDA (requires Linux + CUDA driver + libnvrtc at runtime).
+# Enable CUDA (requires Linux + CUDA driver at runtime, and `nvcc` at build
+# time to precompile the kernel to PTX; `build.rs` handles that).
 # Pinned to cuda-12080 bindings (the newest cudarc 0.14 supports) instead of
 # `cuda-version-from-build-system`, which panics on CUDA 13 (Colab's current
-# toolkit). The driver/nvrtc APIs are version-stable, so 12.8 bindings dlopen
-# fine against a newer CUDA runtime.
+# toolkit). The driver API is version-stable, so 12.8 bindings dlopen fine
+# against a newer CUDA runtime.
+# NOTE: we do NOT use NVRTC at runtime — CUDA 13 on Colab ships a broken
+# libnvrtc (missing libnvrtc-builtins.so.13.0) that hangs nvrtcCompileProgram.
 cuda = ["dep:cudarc", "cudarc/cuda-12080"]
 
 [dependencies]
@@ -22,7 +26,7 @@ clap = { version = "4", features = ["derive"] }
 anyhow = "1"
 rayon = "1"
 hex = "0.4"
-cudarc = { version = "0.14", optional = true, default-features = false, features = ["std", "driver", "nvrtc"] }
+cudarc = { version = "0.14", optional = true, default-features = false, features = ["std", "driver"] }
 
 [profile.release]
 opt-level = 3

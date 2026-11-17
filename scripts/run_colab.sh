@@ -59,7 +59,25 @@ if [ ! -f "$REPO_DIR/Cargo.toml" ]; then
 fi
 cd "$REPO_DIR"
 
-# --- 4. Build ---------------------------------------------------------------
+# --- 4. Ensure nvcc (needed by build.rs to precompile the kernel to PTX) -----
+if [ "$USE_GPU" = "1" ] && ! command -v nvcc >/dev/null 2>&1; then
+  echo "== nvcc not found; installing nvidia-cuda-nvcc-cu12 =="
+  pip install -q nvidia-cuda-nvcc-cu12
+  NVCC_BIN="$(python - <<'PY'
+import site, os
+for base in site.getsitepackages():
+    p = os.path.join(base, "nvidia", "cuda_nvcc", "bin")
+    if os.path.isdir(p):
+        print(p)
+        break
+PY
+)"
+  if [ -n "${NVCC_BIN:-}" ]; then
+    export PATH="$NVCC_BIN:$PATH"
+  fi
+fi
+
+# --- 5. Build ---------------------------------------------------------------
 if [ "$USE_GPU" = "1" ]; then
   echo "== Building with CUDA =="
   cargo build --release --features cuda
@@ -68,7 +86,7 @@ else
   cargo build --release
 fi
 
-# --- 5. Run -----------------------------------------------------------------
+# --- 6. Run -----------------------------------------------------------------
 CKPT="checkpoint.json"
 [ -d /content ] && CKPT="/content/bitsearch_checkpoint.json"
 

@@ -1,8 +1,9 @@
 //! CUDA search path (behind the `cuda` feature).
 //!
-//! Uses `cudarc` with runtime NVRTC compilation: the `.cu` kernel source is
-//! compiled to PTX at startup, so no `nvcc` build step is required (only the
-//! CUDA driver + libnvrtc, both present on Google Colab).
+//! Uses `cudarc` with a precompiled PTX module: `build.rs` runs `nvcc` at
+//! build time to turn `kernel/kernel.cu` into PTX, which is embedded in the
+//! binary and loaded at startup. (NVRTC is avoided — CUDA 13 on Colab ships a
+//! broken libnvrtc that hangs `nvrtcCompileProgram`.)
 //!
 //! The host precomputes the `2^i * G` table and the per-launch base/step points
 //! using `k256`; the kernel does only incremental point additions + hashing.
@@ -11,7 +12,7 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 
 use anyhow::Result;
 use cudarc::driver::{CudaContext, CudaModule, CudaSlice, CudaStream, LaunchConfig, PushKernelArg};
-use cudarc::nvrtc::compile_ptx;
+use cudarc::nvrtc::Ptx;
 
 use k256::elliptic_curve::sec1::ToEncodedPoint;
 use k256::elliptic_curve::PrimeField;
@@ -25,6 +26,13 @@ const MAX_THREADS: u64 = 1 << 20;
 /// Keys scanned per kernel launch (~1s on a fast GPU). Each launch is a
 /// natural checkpoint boundary.
 const GPU_CHUNK: u64 = 1 << 30;
+
+/// PTX precompiled by `build.rs` via `nvcc` (embedded into the binary at
+/// compile time). We avoid NVRTC because CUDA 13 on Colab ships a broken
+/// libnvrtc that hangs.
+fn kernel_ptx() -> Ptx {
+    Ptx::from_src(include_str!(concat!(env!("OUT_DIR"), "/kernel.ptx")).to_string())
+}
 
 fn scalar_from_u64(v: u64) -> Scalar {
     let mut bytes = [0u8; 32];
@@ -97,11 +105,8 @@ fn setup(target: &[u8; 20]) -> Result<Gpu> {
     eprintln!("[gpu] initializing CUDA device 0");
     let ctx = CudaContext::new(0)?;
     let stream = ctx.default_stream();
-    eprintln!("[gpu] compiling kernel (NVRTC)");
-    let ptx = compile_ptx(include_str!("../kernel/kernel.cu"))
-        .map_err(|e| anyhow::anyhow!("NVRTC compile failed: {e}"))?;
-    eprintln!("[gpu] loading module");
-    let module = ctx.load_module(ptx)?;
+    eprintln!("[gpu] loading module (precompiled PTX)");
+    let module = ctx.load_module(kernel_ptx())?;
     let search_fn = module.load_function("search_kernel")?;
     let g_tab = build_g_tab();
     let g_tab_dev = stream.memcpy_stod(&g_tab)?;
@@ -195,9 +200,7 @@ pub fn search(
 pub fn selftest() -> Result<()> {
     let ctx = CudaContext::new(0)?;
     let stream = ctx.default_stream();
-    let ptx = compile_ptx(include_str!("../kernel/kernel.cu"))
-        .map_err(|e| anyhow::anyhow!("NVRTC compile failed: {e}"))?;
-    let module = ctx.load_module(ptx)?;
+    let module = ctx.load_module(kernel_ptx())?;
 
     // --- 1. HASH160 reference check ---
     let fn_ = module.load_function("selftest_kernel")?;
