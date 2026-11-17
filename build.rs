@@ -7,7 +7,8 @@
 //! has no such dependency.
 
 use std::path::PathBuf;
-use std::process::Command;
+use std::process::{Command, Stdio};
+use std::time::{Duration, Instant};
 
 fn find_nvcc() -> Option<PathBuf> {
     // Explicit override.
@@ -82,14 +83,36 @@ fn main() {
         nvcc.display()
     );
 
-    let status = Command::new(&nvcc)
+    // Run nvcc with a timeout so a broken/hung nvcc fails loudly instead of
+    // blocking `cargo build` forever.
+    let mut child = Command::new(&nvcc)
         .arg("-ptx")
         .arg(format!("-arch={arch}"))
         .arg("-o")
         .arg(&ptx_path)
         .arg("kernel/kernel.cu")
-        .status()
+        .stdout(Stdio::inherit())
+        .stderr(Stdio::inherit())
+        .spawn()
         .unwrap_or_else(|e| panic!("failed to run nvcc ({}): {e}", nvcc.display()));
+
+    let deadline = Instant::now() + Duration::from_secs(120);
+    let status = loop {
+        if let Some(status) = child
+            .try_wait()
+            .unwrap_or_else(|e| panic!("failed to wait for nvcc: {e}"))
+        {
+            break status;
+        }
+        if Instant::now() > deadline {
+            let _ = child.kill();
+            panic!(
+                "nvcc timed out after 120s while compiling kernel/kernel.cu (arch {arch}).\n\
+                 This usually means the nvcc install is broken (see pip nvidia-cuda-nvcc-cu12)."
+            );
+        }
+        std::thread::sleep(Duration::from_millis(100));
+    };
 
     if !status.success() {
         panic!("nvcc failed to compile kernel/kernel.cu (arch {arch})");
