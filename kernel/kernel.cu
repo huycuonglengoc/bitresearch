@@ -524,9 +524,19 @@ extern "C" __global__ void search_kernel(
     u32 *zorig = shm;
     u32 *prod = shm + n * 8;
 
-    u64 key = start + idx;
-    while (true) {
-        if (key > end) return;
+    // Uniform iteration count for the whole block: thread 0 of this block has
+    // the smallest key, hence the most iterations. Every thread runs the same
+    // number of iterations so the __syncthreads() inside batch_invert never
+    // diverges (which would deadlock on partial blocks).
+    u64 block_base = start + (idx - tid); // key of thread 0 in this block
+    u64 n_iter = 0;
+    if (block_base <= end) {
+        n_iter = (end - block_base) / T + 1;
+    }
+
+    for (u64 it = 0; it < n_iter; it++) {
+        u64 key = start + idx + it * T;
+        int in_range = (key <= end);
 
         fe zinv;
         batch_invert(zorig, prod, &P.z, tid, n, &zinv);
@@ -570,17 +580,15 @@ extern "C" __global__ void search_kernel(
         u32 h160[5];
         ripemd160_compress(h160, rmsg);
 
-        if (h160[0] == target[0] && h160[1] == target[1] && h160[2] == target[2] &&
-            h160[3] == target[3] && h160[4] == target[4]) {
+        if (in_range && h160[0] == target[0] && h160[1] == target[1] &&
+            h160[2] == target[2] && h160[3] == target[3] && h160[4] == target[4]) {
             if (atomicCAS(found_flag, 0u, 1u) == 0u) {
                 *found_key = key;
             }
-            return;
         }
 
         // P += step
         point_add_mixed(&P, &P, &step);
-        key += T;
     }
 }
 

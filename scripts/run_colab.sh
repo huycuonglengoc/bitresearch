@@ -4,13 +4,14 @@
 # with CUDA, and runs.
 #
 # Usage (from a Colab cell):
+#   # validate the GPU kernel:
 #   !bash <(curl -sSL https://raw.githubusercontent.com/<user>/<repo>/main/scripts/run_colab.sh) \
-#        -- 0xSTART_HEX 0xEND_HEX 1TARGET_P2PKH...
+#        -- --selftest
+#   # real search:
+#   !bash <(curl -sSL https://raw.githubusercontent.com/<user>/<repo>/main/scripts/run_colab.sh) \
+#        -- --start 0xSTART_HEX --end 0xEND_HEX --target 1TARGET_P2PKH...
 #
-# The repository URL is read from BITSEARCH_REPO. Set it in the cell before
-# running, or edit REPO_URL below and push:
-#   import os
-#   os.environ["BITSEARCH_REPO"] = "https://github.com/<user>/<repo>.git"
+# All arguments after `--` are passed straight to the binary.
 set -euo pipefail
 
 REPO_URL="${BITSEARCH_REPO:-}"
@@ -71,7 +72,10 @@ fi
 CKPT="checkpoint.json"
 [ -d /content ] && CKPT="/content/bitsearch_checkpoint.json"
 
-# GPU is the default when built with `--features cuda` (done above when a GPU
-# is present); no flag needed.
-exec ./target/release/bitsearch \
-  --start "$1" --end "$2" --target "$3" --checkpoint "$CKPT"
+# Pass all arguments straight through to the binary. Add a checkpoint default
+# only for a real search (not --selftest).
+ARGS=("$@")
+if [[ " ${ARGS[*]} " != *"--checkpoint"* && " ${ARGS[*]} " != *"--selftest"* ]]; then
+  ARGS+=(--checkpoint "$CKPT")
+fi
+exec ./target/release/bitsearch "${ARGS[@]}"

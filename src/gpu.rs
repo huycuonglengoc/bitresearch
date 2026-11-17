@@ -94,15 +94,19 @@ struct Gpu {
 }
 
 fn setup(target: &[u8; 20]) -> Result<Gpu> {
+    eprintln!("[gpu] initializing CUDA device 0");
     let ctx = CudaContext::new(0)?;
     let stream = ctx.default_stream();
+    eprintln!("[gpu] compiling kernel (NVRTC)");
     let ptx = compile_ptx(include_str!("../kernel/kernel.cu"))
         .map_err(|e| anyhow::anyhow!("NVRTC compile failed: {e}"))?;
+    eprintln!("[gpu] loading module");
     let module = ctx.load_module(ptx)?;
     let search_fn = module.load_function("search_kernel")?;
     let g_tab = build_g_tab();
     let g_tab_dev = stream.memcpy_stod(&g_tab)?;
     let target_dev = stream.memcpy_stod(&hash_to_u32s(target))?;
+    eprintln!("[gpu] ready");
     Ok(Gpu {
         _ctx: ctx,
         stream,
@@ -143,7 +147,10 @@ impl Gpu {
         builder.arg(&end);
         builder.arg(&mut found_key_dev);
         builder.arg(&mut found_flag_dev);
+        eprintln!("[gpu] launching chunk [{start:#x}, {end:#x}] (T={t}, grid={grid})");
         unsafe { builder.launch(cfg) }?;
+        self.stream.synchronize()?;
+        eprintln!("[gpu] chunk done");
 
         let flag = self.stream.memcpy_dtov(&found_flag_dev)?[0];
         if flag == 1 {
@@ -227,6 +234,7 @@ pub fn selftest() -> Result<()> {
     b.arg(&mut out_hash_dev);
     b.arg(&n_i32);
     unsafe { b.launch(cfg) }?;
+    stream.synchronize()?;
     let hash_out = stream.memcpy_dtov(&out_hash_dev)?;
 
     let mut ok = true;
