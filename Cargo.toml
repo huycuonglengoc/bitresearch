@@ -34,6 +34,13 @@ opt-level = 3
 # nvcc, not the Rust host code).
 panic = "abort"
 
+# Our own crate is mostly generic monomorphization (cudarc + k256) plus a thin
+# host driver; opt-level 2 compiles noticeably faster than 3 on Colab's 2 vCPU
+# with no meaningful impact on GPU throughput (and a negligible CPU-path hit).
+# Dependencies keep opt-level 3 (their fingerprints are unchanged).
+[profile.release.package.bitsearch]
+opt-level = 2
+
 [[bin]]
 name = "bitsearch"
 path = "src/main.rs"
