@@ -3,7 +3,6 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use anyhow::Result;
-use clap::Parser;
 
 use bitsearch::config::{self, Config};
 use bitsearch::{checkpoint, cpu, target};

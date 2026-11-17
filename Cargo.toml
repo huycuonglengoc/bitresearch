@@ -22,7 +22,6 @@ cuda = ["dep:cudarc", "cudarc/cuda-12080"]
 k256 = "0.13"
 sha2 = "0.10"
 ripemd = "0.1"
-clap = { version = "4", features = ["derive"] }
 anyhow = "1"
 rayon = "1"
 hex = "0.4"

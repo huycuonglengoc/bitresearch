@@ -1,45 +1,116 @@
 //! Argument parsing and validation.
+//!
+//! Hand-rolled on purpose: `clap` (+ `clap_derive`/`syn`/`quote`/`anstream`) is
+//! a large compile-time cost that makes the from-scratch build very slow on
+//! Colab's 2 vCPU. Our CLI has only a handful of trivial flags, so a small
+//! manual parser is clearer and much faster to build.
 
 use std::path::PathBuf;
 
 use anyhow::Result;
-use clap::Parser;
 
-#[derive(Parser, Debug)]
-#[command(
-    name = "bitsearch",
-    version,
-    about = "Search a hex key range for the private key matching a Bitcoin P2PKH address"
-)]
+#[derive(Debug)]
 pub struct Args {
-    /// Start of the private-key range (hex, up to 64-bit, optional 0x prefix).
-    #[arg(long)]
     pub start: Option<String>,
-
-    /// End of the range (hex, inclusive).
-    #[arg(long)]
     pub end: Option<String>,
-
-    /// Target P2PKH address (starts with '1').
-    #[arg(long)]
     pub target: Option<String>,
-
-    /// Number of CPU threads to use (0 = all logical cores).
-    #[arg(long, default_value_t = 0)]
     pub threads: usize,
-
-    /// Force the CPU search path (default uses the GPU when the `cuda` feature
-    /// is enabled; falls back to CPU automatically otherwise).
-    #[arg(long)]
     pub cpu: bool,
-
-    /// Path to the checkpoint file (resume state).
-    #[arg(long, default_value = "checkpoint.json")]
     pub checkpoint: PathBuf,
-
-    /// Run the GPU self-test (validates kernel vs CPU reference) and exit.
-    #[arg(long)]
     pub selftest: bool,
+}
+
+fn print_help() {
+    eprintln!(
+        "\
+bitsearch {version} — search a hex key range for the private key matching a P2PKH address
+
+USAGE:
+    bitsearch --start <HEX> --end <HEX> --target <ADDRESS> [OPTIONS]
+
+OPTIONS:
+    --start <HEX>       Start of the private-key range (hex, up to 64-bit, 0x optional)
+    --end <HEX>         End of the range (hex, inclusive)
+    --target <ADDRESS>  Target P2PKH address (starts with '1')
+    --threads <N>       Number of CPU threads (0 = all logical cores) [default: 0]
+    --cpu               Force the CPU search path (default: GPU when built with CUDA)
+    --checkpoint <PATH> Checkpoint file for resume [default: checkpoint.json]
+    --selftest          Run the GPU self-test and exit (no range/target needed)
+    -h, --help          Print help
+    -V, --version       Print version",
+        version = env!("CARGO_PKG_VERSION")
+    );
+}
+
+impl Args {
+    /// Parse command-line arguments, printing help/errors and exiting on
+    /// malformed input (mirrors the ergonomics of a `clap::Parser`).
+    pub fn parse() -> Args {
+        let mut args = Args {
+            start: None,
+            end: None,
+            target: None,
+            threads: 0,
+            cpu: false,
+            checkpoint: PathBuf::from("checkpoint.json"),
+            selftest: false,
+        };
+
+        let mut it = std::env::args().skip(1);
+        while let Some(arg) = it.next() {
+            // Support both `--flag value` and `--flag=value`.
+            let (key, inline_val) = match arg.split_once('=') {
+                Some((k, v)) => (k.to_string(), Some(v.to_string())),
+                None => (arg, None),
+            };
+
+            match key.as_str() {
+                "--help" | "-h" => {
+                    print_help();
+                    std::process::exit(0);
+                }
+                "--version" | "-V" => {
+                    println!("bitsearch {}", env!("CARGO_PKG_VERSION"));
+                    std::process::exit(0);
+                }
+                "--start" => args.start = Some(take_value(&mut it, inline_val, "--start")),
+                "--end" => args.end = Some(take_value(&mut it, inline_val, "--end")),
+                "--target" => args.target = Some(take_value(&mut it, inline_val, "--target")),
+                "--threads" => {
+                    let v = take_value(&mut it, inline_val, "--threads");
+                    args.threads = v.parse().unwrap_or_else(|_| {
+                        eprintln!("error: invalid value '{v}' for '--threads': expected an integer");
+                        std::process::exit(2);
+                    });
+                }
+                "--checkpoint" => {
+                    args.checkpoint = PathBuf::from(take_value(&mut it, inline_val, "--checkpoint"))
+                }
+                "--cpu" => args.cpu = true,
+                "--selftest" => args.selftest = true,
+                other => {
+                    eprintln!("error: unknown argument '{other}'");
+                    print_help();
+                    std::process::exit(2);
+                }
+            }
+        }
+
+        args
+    }
+}
+
+/// Return the value for `flag`, either from `--flag=value` or the next
+/// positional argument, or exit with an error if it is missing.
+fn take_value(it: &mut impl Iterator<Item = String>, inline: Option<String>, flag: &str) -> String {
+    if let Some(v) = inline {
+        return v;
+    }
+    it.next().unwrap_or_else(|| {
+        eprintln!("error: missing value for '{flag}'");
+        print_help();
+        std::process::exit(2);
+    })
 }
 
 pub struct Config {
