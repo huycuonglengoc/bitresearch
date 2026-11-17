@@ -142,7 +142,7 @@ __device__ __forceinline__ void fe_sub(fe *r, const fe *a, const fe *b) {
 }
 
 // Fold a 16-limb (512-bit) value into 8 limbs mod p.
-__device__ __forceinline__ void fe_reduce(fe *r, const u32 *t16) {
+__device__ __noinline__ void fe_reduce(fe *r, const u32 *t16) {
     u32 tmp[16];
     for (int i = 0; i < 16; i++) tmp[i] = t16[i];
 
@@ -183,7 +183,12 @@ __device__ __forceinline__ void fe_reduce(fe *r, const u32 *t16) {
 }
 
 // r = a * b mod p
-__device__ __forceinline__ void fe_mul(fe *r, const fe *a, const fe *b) {
+//
+// NOTE: `__noinline__` (not `__forceinline__`). Forcing every field op to inline
+// into the search kernel makes nvcc/cicc build one giant function whose codegen
+// hangs the compiler (it did, at every -O level). Keeping the heavy arithmetic
+// as separate device functions compiles instantly; the call overhead is small.
+__device__ __noinline__ void fe_mul(fe *r, const fe *a, const fe *b) {
     u32 t[16];
     for (int i = 0; i < 16; i++) t[i] = 0;
     for (int i = 0; i < 8; i++) {
@@ -199,7 +204,7 @@ __device__ __forceinline__ void fe_mul(fe *r, const fe *a, const fe *b) {
 }
 
 // r = a^2 mod p
-__device__ __forceinline__ void fe_sqr(fe *r, const fe *a) {
+__device__ __noinline__ void fe_sqr(fe *r, const fe *a) {
     fe_mul(r, a, a);
 }
 
@@ -249,7 +254,7 @@ typedef struct {
 } jacobian;
 
 // P + Q -> r, where P is Jacobian, Q affine. Handles P at infinity.
-__device__ __forceinline__ void point_add_mixed(jacobian *r, const jacobian *p, const affine *q) {
+__device__ __noinline__ void point_add_mixed(jacobian *r, const jacobian *p, const affine *q) {
     if (fe_is_zero(&p->z)) {
         fe_copy(&r->x, &q->x);
         fe_copy(&r->y, &q->y);
@@ -288,7 +293,7 @@ __device__ __forceinline__ void point_add_mixed(jacobian *r, const jacobian *p, 
 }
 
 // key * G in Jacobian coordinates, using the 2^i * G table.
-__device__ __forceinline__ void point_from_u64(jacobian *out, const u32 *g_tab, u64 key) {
+__device__ __noinline__ void point_from_u64(jacobian *out, const u32 *g_tab, u64 key) {
     fe_zero(&out->z);
     #pragma unroll 1  // 64 iterations of point_add_mixed; unrolling inflates codegen
     for (int i = 0; i < 64; i++) {
@@ -317,7 +322,7 @@ __device__ __constant__ u32 SHA256_K[64] = {
     0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2
 };
 
-__device__ __forceinline__ void sha256_compress(u32 *out, const u8 *msg) {
+__device__ __noinline__ void sha256_compress(u32 *out, const u8 *msg) {
     u32 w[64];
     for (int i = 0; i < 16; i++) {
         w[i] = ((u32)msg[4 * i] << 24) | ((u32)msg[4 * i + 1] << 16) |
@@ -393,7 +398,7 @@ __device__ __constant__ int RIPEMD_SR[80] = {
     8, 5, 12, 9, 12, 5, 14, 6, 8, 13, 6, 5, 15, 13, 11, 11
 };
 
-__device__ __forceinline__ void ripemd160_compress(u32 *out, const u8 *msg) {
+__device__ __noinline__ void ripemd160_compress(u32 *out, const u8 *msg) {
     u32 x[16];
     for (int i = 0; i < 16; i++) {
         x[i] = ((u32)msg[4 * i] << 24) | ((u32)msg[4 * i + 1] << 16) |
@@ -424,7 +429,7 @@ __device__ __forceinline__ void ripemd160_compress(u32 *out, const u8 *msg) {
 // ---------------------------------------------------------------------------
 // HASH160 of a compressed public key
 // ---------------------------------------------------------------------------
-__device__ __forceinline__ void hash160_from_point(const jacobian *P, u32 *out5) {
+__device__ __noinline__ void hash160_from_point(const jacobian *P, u32 *out5) {
     fe zinv, zinv2, zinv3, ax, ay;
     fe_inv(&zinv, &P->z);
     fe_sqr(&zinv2, &zinv);
